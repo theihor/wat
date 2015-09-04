@@ -1,8 +1,11 @@
-(ns wat.core)
+(ns wat.core
+  (:require
+   [ring.adapter.jetty :as jetty]
+   [ring.util.response :refer :all]
+   [ring.middleware.resource :refer :all]
+   [compojure.core :refer :all]
+   [compojure.route :as route]))
 
-(use 'ring.adapter.jetty)
-(use 'ring.util.response)
-(use 'ring.middleware.resource)
 (use '[wat.database :as db])
 
 (defn handler [request]
@@ -32,4 +35,4 @@
   (-> #'handler
       (wrap-resource "public")))
 
-(defonce server (ring.adapter.jetty/run-jetty #'app {:port 3030 :join? false}))
+(defonce server (jetty/run-jetty #'app {:port 3030 :join? false}))
