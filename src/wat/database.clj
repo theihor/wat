@@ -54,17 +54,15 @@
       (println "Database" db-name "already exist, its fine."))
     (println "Connection established!")))
 
-(defn create-line [& {:keys [pname id text male-text female-text translator], :or {male-text "" female-text "" translator ""}
-                      }]
-  (println (str "wtf" pname id text male-text female-text translator))
+(defn create-line [& {:keys [pname id text male-text female-text translator],
+                      :or {male-text "" female-text "" translator ""}}]
   {:db/id (d/tempid :db.part/user)
    :line/pname pname
    :line/num (java.lang.Long. id)
    :line/original text
    :line/male male-text
    :line/female female-text
-   :line/translator translator
-   })
+   :line/translator translator})
 
 (defn get-n-words [n coll]
   (let [sum (atom 0)
@@ -84,6 +82,7 @@
                        :in $ ?pname
                        :where [?line :line/pname ?pname]]
                      db project-name)]
+    (println (str "dumped " content))
     (with-open [out-file (io/writer (str "/tmp/" project-name ".csv"))]
       (csv/write-csv out-file
                      (sort #(compare (first %1) (first %2))
@@ -99,8 +98,25 @@
   (let [data (with-open [in-file (io/reader source)]
                (doall
                 (csv/read-csv in-file)))]
+    (println "loaded")
     (doseq [[n o m f t] data]
-        @(d/transact conn [(create-line :pname pname :id n :text o)]))))
+      @(d/transact conn [(create-line :pname pname :id n :text o)]))))
+
+(defn cleanup-project [pname]
+  (let [data (d/q '[:find [?line ...]
+                    :in $ ?pname
+                    :where [?line :line/pname ?pname]]
+                  (d/db conn) pname)]
+    (println "cleaned " data)
+    (doseq [e data]
+      @(d/transact
+        conn
+        [{:db/id #db/id[db.part/user], :db/excise e}]))))
+
+(defn get-project-chunk [pname size]
+  (println (str (d/q '[:find (wat.database/get-n-words 8 ?e) .;; find all untranslated entries and collect till have n words 
+                       :where [?e :line/pname "tududu"]]
+                     (d/db conn)))))
 
 (defn get-dummy-info []
   (println "====================")
@@ -111,10 +127,10 @@
   (println ">")
   ;(dump-project "default")
   ;(load-project "tududu" "/tmp/default")
-  (dump-project "tududu")
-  (println (str (d/q '[:find (wat.database/get-n-words 8 ?e) .;; find all untranslated entries and collect till have n words 
-                       :where [?e :line/pname "tududu"]]
-                     (d/db conn))))
+  (future
+    (cleanup-project "tududu")
+    (Thread/sleep 3000)
+    (dump-project "tududu"))
   (println "<")
   (str "Hello there, big brother greets you!"))
 
