@@ -1,0 +1,26 @@
+<head>
+  <title>Registration Form</title>
+</head>
+<body>
+		<div id="register" class="animate form">
+			<form method="post" action="register"> 
+				<h1> Sign up to WAT</h1> 
+				<p><input id="username" name="username" required="required" type="text" placeholder="Username" /></p>
+				<p><input id="password" name="password" required="required" type="password" placeholder="Password"/></p>
+				<p><input id="passwordconfirm" name="passwordconfirm" required="required" type="password" placeholder="Password again"    
+                          oninput="check(this)"/></p>
+                    <script language='javascript' type='text/javascript'>
+                        function check(input) {
+                            if (input.value != document.getElementById('password').value) {
+                                input.setCustomValidity('Passwords Must Match.');
+                            } else {
+                                input.setCustomValidity('');
+                            }
+                        }
+                    </script>
+                <p><input id="token" name="token" required="required" type="text" placeholder="Invite code"/></p>
+				<p class="signin button"> <input type="submit" value="Sign up"/> </p>
+				<p class="change_link">	Already a member? <a href="login" class="to_register"> Go and log in </a></p>
+			</form>
+		</div>
+</body>

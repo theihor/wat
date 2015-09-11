@@ -2,7 +2,11 @@
 
 (require '[datomic.api :as d]
          '[clojure.data.csv :as csv]
-         '[clojure.java.io :as io])
+         '[clojure.java.io :as io]
+         '[clj-time.core :as time]
+         '[clj-time.coerce :as tc])
+
+(use '[wat.util :refer :all])
 
 (defn define-attributes [c]
   (d/transact c ; User attributes
@@ -13,6 +17,12 @@
                 :db/doc "Username"
                 :db.install/_attribute :db.part/db}
                {:db/id (d/tempid :db.part/db)
+                :db/ident :user/password
+                :db/valueType :db.type/string
+                :db/cardinality :db.cardinality/one
+                :db/doc "Encrypted user password."
+                :db.install/_attribute :db.part/db}
+               {:db/id (d/tempid :db.part/db)
                 :db/ident :user/properties
                 :db/valueType :db.type/long
                 :db/cardinality :db.cardinality/one
@@ -21,12 +31,13 @@
                {:db/id (d/tempid :db.part/db)
                 :db/ident :user/uid
                 :db/valueType :db.type/long
+                :db/unique :db.unique/value
                 :db/cardinality :db.cardinality/one
                 :db/doc "UID"
                 :db.install/_attribute :db.part/db}
                {:db/id (d/tempid :db.part/db)
                 :db/ident :user/rating
-                :db/valueType :db.type/double
+                :db/valueType :db.type/long
                 :db/cardinality :db.cardinality/one
                 :db/doc "User work rating."
                 :db.install/_attribute :db.part/db}
@@ -35,7 +46,8 @@
                 :db/valueType :db.type/ref
                 :db/cardinality :db.cardinality/many
                 :db/doc "List of lines user working on."
-                :db.install/_attribute :db.part/db}])
+                :db.install/_attribute :db.part/db}
+               ])
   (d/transact c ; Line attributes
               [{:db/id (d/tempid :db.part/db)
                 :db/ident :line/pname
@@ -198,24 +210,56 @@
   (doseq [e chunk]
     (d/transact conn
                   [{:db/id e
-                    :line/reserved 0}
-                    :line/translator uid])))
+                    :line/reserved 0
+                    :line/translator uid}])))
 
 (defn return-redacted-chunk [chunk uid]
   (doseq [e chunk]
     (d/transact conn
                   [{:db/id e
-                    :line/reserved 0}
-                    :line/redactor uid])))
+                    :line/reserved 0
+                    :line/redactor uid}])))
 
 (defn update-chunk [data]
   (doseq [e data]
     (when-not (= e (d/touch (d/entity (d/db conn) (:db/id e))))
       (d/transact conn [e]))))
 
+(defn add-user [username password role]
+  (let [uid (tc/to-long (time/now))]
+   (d/transact conn
+               [{:db/id (d/tempid :db.part/user)
+                 :user/name username
+                 :user/uid (java.lang.Long. uid)
+                 :user/password password
+                 :user/rating (java.lang.Long. 0)
+                 :user/worklist []
+                 :user/properties (java.lang.Long. role)}])))
+
+(defn set-password [username password]
+  (aif (d/q '[:find ?ident .
+              :in $ ?name
+              :where [?ident :user/name ?name]] (d/db conn) username)
+       (d/transact conn
+                   [{:db/id (:db/id (d/touch (d/entity (d/db conn) it)))
+                     :user/password password}])))
+
+(defn user-exist? [name]
+  (when name
+    (aif (d/q '[:find ?ident .
+                :in $ ?name
+                :where [?ident :user/name ?name]] (d/db conn) name)
+         (let [user (d/touch (d/entity (d/db conn) it))]
+           {:name (:user/name user) :uid (:user/uid user) :password (:user/password user) :role (:user/properties user)}))))
+
+(defn get-user-list []
+  (doall
+   (map #(d/touch (d/entity (d/db conn) %))
+        (d/q '[:find [?user ...]
+               :where [?user :user/name _]] (d/db conn)))))
+
 (defn get-dummy-info []
   (println "====================")
-  ;(define-attributes conn)
   #_(println (str (d/transact ; add entry
                  conn
                  [(create-line :pname "default" :id 1 :text "qwerty sdfg")])))
