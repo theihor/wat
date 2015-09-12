@@ -18,6 +18,16 @@
       :body (str "<center>Welcome to workspace,<b>" (:name user) "</b>.</center>")})
    (redirect "/login")))
 
+(defn dashboard-handler [req]
+  (aif (authenticated? req 0)
+   (let [user it]
+     {:status 200
+      :headers {"Content-Type" "text/html"}
+      :body (str "<center>Welcome to workspace,<b>" (:name user) "</b>.</center>")})
+   {:status  403
+    :headers {"Content-Type" "text/html"}
+    :body    "<center>Only for admins, buddy.</center>"}))
+
 (defn logout-handler [req]
   {:status 200
    :headers {"Content-Type" "text/html"}
