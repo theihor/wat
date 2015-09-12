@@ -3,30 +3,60 @@
             [ring.util.response :refer :all]))
 
 (use '[wat.database :as db])
-(use '[wat.util :refer :all])
+(use '[wat.util :as util :refer [aif]])
 
 (defn authenticated? [req role]
   (let [user (user-exist? (:user (:session req)))]
     (if (and user (<= (:role user) role))
       user)))
 
-(defn workspace-handler [req]
+;; ===============================================
+;; User handlers
+;; ===============================================
+
+(defn workspace-handler [req] ;; TODO: if user already got chunk - load it to workspace instantly
   (aif (authenticated? req 1)
-   (let [user it]
-     {:status 200
-      :headers {"Content-Type" "text/html"}
-      :body (str "<center>Welcome to workspace,<b>" (:name user) "</b>.</center>")})
+       (let [user it]
+         {:status 200
+          :headers {"Content-Type" "text/html"}
+          :body (str "<center>Welcome to workspace,<b>" (:name user) "</b>.</center>")})
+       (redirect "/login")))
+
+(defn get-text-to-translate [req]
+  (aif (authenticated? req 1)
+       (let [user it
+             pname (:project-name req)
+             size (:number-of-words req)
+             [chunk chunk-size] (db/get-project-chunk-to-translate pname size user)]
+         ;; Some kind of response         
+     )
    (redirect "/login")))
+
+(defn get-text-to-redact [req]
+  (aif (authenticated? req 1)
+       (let [user it
+             pname (:project-name req)
+             size (:number-of-words req)
+             [chunk chunk-size] (db/get-project-chunk-to-redact pname size user)]
+         ;; Some kind of response      
+     )
+   (redirect "/login")))
+
+;; ===============================================
+;; Admin handlers
+;; ===============================================
 
 (defn dashboard-handler [req]
   (aif (authenticated? req 0)
-   (let [user it]
-     {:status 200
-      :headers {"Content-Type" "text/html"}
-      :body (str "<center>Welcome to workspace,<b>" (:name user) "</b>.</center>")})
-   {:status  403
-    :headers {"Content-Type" "text/html"}
-    :body    "<center>Only for admins, buddy.</center>"}))
+       (let [user it]
+         {:status 200
+          :headers {"Content-Type" "text/html"}
+          :body (str "<center>Welcome to workspace,<b>" (:name user) "</b>.</center>")})
+       {:status  403
+        :headers {"Content-Type" "text/html"}
+        :body    "<center>Only for admins, buddy.</center>"}))
+
+;; ===============================================
 
 (defn logout-handler [req]
   {:status 200
@@ -59,18 +89,3 @@
       {:status  403
        :headers {"Content-Type" "text/html"}
        :body    "<center>Invalid token, try again.</center>"})))
-
-#_(defn handler [request]
-  {:status 200
-   :headers {"Content-Type" "text/html"}
-   :body (str "<script>
-                        function ahtung(){
-                            alert (\"" (db/get-project-list) "\")
-                        }
-                        </script>
-                        <center>
-                          <a href=\"/dummy\"> <img src=\"favicon.ico\" onclick=\"ahtung()\" > </a> <br>
-                        " (db/get-dummy-info) " 
-                        </center>
-                        "
-                        ) })

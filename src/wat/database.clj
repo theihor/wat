@@ -138,7 +138,6 @@
         data (rest (with-open [in-file (io/reader source)]
                      (doall
                       (csv/read-csv in-file))))]
-    
     (loop [line data
            num 0]
       (aif (first line)

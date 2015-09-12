@@ -3,8 +3,8 @@
    [ring.adapter.jetty :as jetty]
    [ring.util.response :refer :all]
    [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
-   [ring.middleware.session :as session]
-   [ring.middleware.session.cookie :as cookie]
+   [ring.middleware.session :refer [wrap-session]]
+   [ring.middleware.session.cookie :refer [cookie-store]]
    [compojure.core :refer :all]
    [compojure.route :as route]))
 
@@ -26,7 +26,7 @@
 
 (def app
   (-> #'app-routes
-      (session/wrap-session {:store (cookie/cookie-store {:key "ljvoow43kfk34pkf"})})
+      (wrap-session {:store (cookie-store {:key "ljvoow43kfk34pkf"})})
       (wrap-defaults (assoc-in site-defaults [:security :anti-forgery] false))))
 
 (defonce server (jetty/run-jetty #'app {:port 3030 :join? false}))
