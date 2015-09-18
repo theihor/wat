@@ -138,15 +138,29 @@
         data (rest (with-open [in-file (io/reader source)]
                      (doall
                       (csv/read-csv in-file))))]
-    (loop [line data
-           num 0]
-      (aif (first line)
-           (do
-             (d/transact *conn* [(assoc (zipmap attrs (concat it stub))
-                                        :db/id (d/tempid :db.part/user)
-                                        :line/num num)])
-             (recur (rest line)
-                    (inc num)))))) true)
+    (d/transact-async
+     *conn*
+     (loop [line data
+            num 0
+            coll []]
+       (aif (first line)
+            (recur (rest line)
+                   (inc num)
+                   (conj coll (assoc (zipmap attrs (concat it stub))
+                                     :db/id (d/tempid :db.part/user)
+                                     :line/num num)))
+            coll)))
+    #_(loop [line data
+               num 0]
+          (aif (first line)
+               (do
+                 (d/transact *conn* [(assoc (zipmap attrs (concat it stub))
+                                            :db/id (d/tempid :db.part/user)
+                                            :line/num num)])
+                 (recur (rest line)
+                        (inc num)))))
+    ))
+
 
 (defn cleanup-project
   "Delete all entries related to specified project.
