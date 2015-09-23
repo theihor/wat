@@ -5,6 +5,8 @@
    [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
    [ring.middleware.session :refer [wrap-session]]
    [ring.middleware.session.cookie :refer [cookie-store]]
+   [ring.middleware.params :refer [wrap-params]]
+   [ring.middleware.multipart-params :refer [wrap-multipart-params]]
    [compojure.core :refer :all]
    [compojure.route :as route]))
 
@@ -21,11 +23,16 @@
   (ANY "/logout" [] handlers/logout-handler)
   ;; User
   (GET "/workspace" [] handlers/workspace-handler)
+  (POST "/get-text-to-translate" [] handlers/get-text-to-translate)
+  (POST "/get-text-to-redact" [] handlers/get-text-to-redact)
+  (POST "/return-text" [] handlers/return-text)
   ;; Admin
   (route/not-found "<center><br><h1>Nothing here, go and do something useful.</h1></center>"))
 
 (def app
   (-> #'app-routes
+      (wrap-params)
+      (wrap-multipart-params)
       (wrap-session {:store (cookie-store {:key "ljvoow43kfk34pkf"})})
       (wrap-defaults (assoc-in site-defaults [:security :anti-forgery] false))))
 

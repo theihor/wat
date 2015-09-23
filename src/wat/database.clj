@@ -13,13 +13,16 @@
 (defonce connect-to-db-server
   (let [db-name "test-db"
         uri (str "datomic:free://localhost:3131/" db-name)
-        res (d/create-database uri)]
-    (def ^:dynamic *conn* (d/connect uri))
-    (if res
-      (do (define-attributes)
-          (println "Created database" db-name "!"))
-      (println "Database" db-name "already exist, its fine."))
-    (println "Connection established!")))
+        created? (d/create-database uri)]
+    (future
+      (Thread/sleep 5000)
+      (def ^:dynamic *conn* (d/connect uri))
+     (if created?
+       (do
+         (define-attributes)
+         (println "\nCreated database" db-name "!"))
+       (println "Database" db-name "already exist, its fine."))
+     (println "Connection established!"))))
 
 (defn add-attribute
   ([name type cardinality doc]
@@ -94,14 +97,15 @@
                 :project/work-attrs (str work-attrs)}]))
 
 (defn get-project [pname]
-  (let [proj
-        (into {} (d/touch (d/entity (d/db *conn*)
-                                    (d/q '[:find ?proj .
-                                           :in $ ?pname
-                                           :where [?proj :project/name ?pname]]
-                                         (d/db *conn*) pname))))]
-    (assoc proj :project/input-attrs (load-string (:project/input-attrs proj))
-                :project/work-attrs (load-string (:project/work-attrs proj)))))
+  (aif (d/q '[:find ?proj .
+              :in $ ?pname
+              :where [?proj :project/name ?pname]]
+            (d/db *conn*) pname)
+       (let [proj (into {} (d/touch (d/entity (d/db *conn*) it)))]
+        (assoc proj
+                :project/input-attrs (load-string (:project/input-attrs proj))
+                :project/work-attrs (load-string (:project/work-attrs proj))
+                :project/inner-attrs [:line/reserved :line/pname :line/num :db/id]))))
 
 (defn dump-project
   "Dump project sorted by line number into file specified or just return lines if no file specified.
@@ -149,18 +153,7 @@
                    (conj coll (assoc (zipmap attrs (concat it stub))
                                      :db/id (d/tempid :db.part/user)
                                      :line/num num)))
-            coll)))
-    #_(loop [line data
-               num 0]
-          (aif (first line)
-               (do
-                 (d/transact *conn* [(assoc (zipmap attrs (concat it stub))
-                                            :db/id (d/tempid :db.part/user)
-                                            :line/num num)])
-                 (recur (rest line)
-                        (inc num)))))
-    ))
-
+            coll)))))
 
 (defn cleanup-project
   "Delete all entries related to specified project.
@@ -175,68 +168,112 @@
        *conn*
        [{:db/id #db/id[db.part/user], :db/excise e}]))))
 
-(defn get-project-chunk-to-translate [pname size user]
-  (let [uname (:name user)
-        [chunk actual-size] (get-n-words size
-                                         (d/q '[:find [?e ...]
-                                                :in $ ?pname
-                                                :where [?e :line/pname ?pname]
-                                                       [?e :line/translator ""]
-                                                       [?e :line/reserved ""]]
-                                              (d/db *conn*) pname))]
-    (doseq [e chunk]
-      (d/transact *conn*
-                  [{:db/id e
-                    :line/reserved uname}]))
-    (d/transact *conn*
-                  [{:db/id (db-id-by-name uname)
-                    :user/worklist chunk}])
-    [(doall (map #(d/touch (d/entity (d/db *conn*) %)) chunk)) actual-size]))
-
-(defn get-project-chunk-to-redact [pname size user]
-  (let [uname (:name user)
-        [chunk actual-size] (get-n-words size
-                                         (d/q '[:find [?e ...]
-                                                :in $ ?pname
-                                                :where [?e :line/pname ?pname]
-                                                       (not [?e :line/translator ""])
-                                                       [?e :line/reserved ""]]
-                                              (d/db *conn*) pname))]
-    (doseq [e chunk]
-      (d/transact *conn*
-                  [{:db/id e
-                    :line/reserved uname}]))
-    (d/transact *conn*
-                [{:db/id (db-id-by-name uname)
-                  :user/worklist chunk}])
-    [(doall (map #(d/touch (d/entity (d/db *conn*) %)) chunk)) actual-size]))
-
-(defn return-translated-chunk [chunk user]
-  (let [uname (:name user)]
-   (doseq [e chunk]
+(defn get-chunk-to-translate [pname size user]
+  (when-not (:worklist user)
+   (let [uname (:name user)
+         db (d/db *conn*)
+         [chunk actual-size] (get-n-words size
+                                          (d/q '[:find [?e ...]
+                                                 :in $ ?pname
+                                                 :where [?e :line/pname ?pname]
+                                                 [?e :line/translator ""]
+                                                 [?e :line/reserved ""]]
+                                               db pname))]
+     (doseq [e chunk]
+       (d/transact *conn*
+                   [{:db/id e
+                     :line/reserved uname}]))
      (d/transact *conn*
-                 [{:db/id e
-                   :line/reserved ""
-                   :line/translator uname}]))
-   (d/transact *conn*
-               [{:db/id (db-id-by-name uname)
-                 :user/worklist []}])))
+                 [{:db/id (db-id-by-name uname)
+                   :user/worklist chunk}])
+     [(doall (map #(into {} (d/touch (d/entity db %))) chunk)) actual-size])))
 
-(defn return-redacted-chunk [chunk user]
-  (let [uname (:uname user)]
-    (doseq [e chunk]
-            (d/transact *conn*
-                        [{:db/id e
-                          :line/reserved ""
-                          :line/redactor uname}]))
-    (d/transact *conn*
-                [{:db/id (db-id-by-name uname)
-                  :user/worklist []}])))
+(defn get-chunk-to-redact [pname size user]
+  (when-not (:worklist user)
+   (let [uname (:name user)
+         db (d/db *conn*)
+         translator (:line/translator (d/touch (d/entity db (d/q '[:find ?e .
+                                                                   :in $ ?pname
+                                                                   :where [?e :line/pname ?pname]
+                                                                   (not [?e :line/translator ""])
+                                                                   [?e :line/reserved ""]]
+                                                                 db pname))))
+         [chunk actual-size] (get-n-words size
+                                          (d/q '[:find [?e ...]
+                                                 :in $ ?pname ?tname
+                                                 :where [?e :line/pname ?pname]
+                                                 [?e :line/translator ?tname]
+                                                 [?e :line/redactor ""] 
+                                                 [?e :line/reserved ""]]
+                                               (d/db *conn*) pname translator))]
+     (doseq [e chunk]
+       (d/transact *conn*
+                   [{:db/id e
+                     :line/reserved uname}]))
+     (d/transact *conn*
+                 [{:db/id (db-id-by-name uname)
+                   :user/worklist chunk}])
+     [(doall (map #(into {} (d/touch (d/entity db %))) chunk)) actual-size])))
 
-(defn update-chunk [data]
-  (doseq [e data]
-    (when-not (= e (d/touch (d/entity (d/db *conn*) (:db/id e))))
-      (d/transact *conn* [e]))))
+(defn return-translated-chunk [proj data user]
+  (let [uname (:name user)
+        worklist (:worklist user)
+        db (d/db *conn*)
+        number-translated ;; Use it somehow
+        (loop [old-lines worklist
+               num-modified 0]
+          (aif (:db/id (first old-lines))
+               (let [original (apply dissoc
+                                     (into {} (d/touch (d/entity db it)))
+                                     (:project/inner-attrs proj))
+                     id (:line/id original)
+                     modified (first (filter #(= id (:line/id %)) data))]
+                 (if (and original (= original modified))
+                   (do ;; If line was not changed
+                     (d/transact *conn*
+                                   [{:db/id it
+                                     :line/reserved ""}])
+                     (recur (rest old-lines)
+                            num-modified))
+                   (do ;; If line actually has changes
+                     (d/transact *conn*
+                                   [(assoc modified
+                                           :db/id it
+                                           :line/reserved ""
+                                           :line/translator uname)])
+                     (recur (rest old-lines)
+                            (+ num-modified
+                               (count (clojure.string/split (:line/text modified) #"\s")))))))
+               num-modified))]
+    (doseq [e worklist]
+      (d/transact *conn*
+                  [[:db/retract (db-id-by-name uname) :user/worklist (:db/id e)]]))))
+
+(defn return-redacted-chunk [proj data user]
+  (let [uname (:name user)
+        worklist (:worklist user)
+        db (d/db *conn*)
+        number-redacted ;; Use it somehow
+        (loop [old-lines worklist
+               num-modified 0]
+          (aif (:db/id (first old-lines))
+               (let [original (apply dissoc
+                                     (into {} (d/touch (d/entity db it)))
+                                     (:project/inner-attrs proj))
+                     id (:line/id original)
+                     modified (first (filter #(= id (:line/id %)) data))] 
+                 (d/transact *conn*
+                             [(assoc modified
+                                     :db/id it
+                                     :line/reserved ""
+                                     :line/redactor uname)])
+                 (recur (rest old-lines)
+                        (+ num-modified
+                           (count (clojure.string/split (:line/text modified) #"\s")))))
+               num-modified))]
+    (doseq [e worklist]
+      (d/transact *conn*
+                  [[:db/retract (db-id-by-name uname) :user/worklist (:db/id e)]]))))
 
 (defn add-user [username password role]
   (let [uid (tc/to-long (time/now))]
@@ -262,13 +299,19 @@
 (defn user-exist? [name]
   (aif (db-id-by-name name)
        (let [user (d/touch (d/entity (d/db *conn*) it))]
-         {:name (:user/name user) :uid (:user/uid user) :password (:user/password user) :role (:user/role user)})))
+         {:name (:user/name user) :uid (:user/uid user) :password (:user/password user) :role (:user/role user) :worklist (:user/worklist user)})))
 
 (defn get-user-list []
   (doall
    (map #(d/touch (d/entity (d/db *conn*) %))
         (d/q '[:find [?user ...]
                :where [?user :user/name _]] (d/db *conn*)))))
+
+(defn get-project-list []
+  (doall
+   (map #(d/touch (d/entity (d/db *conn*) %))
+        (d/q '[:find [?user ...]
+               :where [?user :project/name _]] (d/db *conn*)))))
 
 (defn get-line-attributes []
   (d/q '[:find [?ident ...]
