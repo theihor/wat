@@ -21,7 +21,7 @@
        (do
          (define-attributes)
          (println "\nCreated database" db-name "!"))
-       (println "Database" db-name "already exist, its fine."))
+       (println "\nDatabase" db-name "already exist, its fine."))
      (println "Connection established!"))))
 
 (defn add-attribute
@@ -113,16 +113,17 @@
   ([pname fname]
    (let [db (d/db *conn*)
          proj (get-project pname)
-         attrs (vec (concat (:project/input-attrs proj)
-                            (:project/work-attrs proj)))
+         attrs (into (:project/input-attrs proj)
+                     (:project/work-attrs proj))
          content (d/q '[:find [?line ...]
                         :in $ ?pname
                         :where [?line :line/pname ?pname]]
                       db pname)]
      (with-open [out-file (io/writer fname)]
        (csv/write-csv out-file
-                      (map #(map % attrs)
-                           (sort-by :line/num (map #(into {} (d/touch (d/entity db %))) content)))))))
+                      (cons attrs
+                            (map #(map % attrs)
+                                 (sort-by :line/num (map #(into {} (d/touch (d/entity db %))) content))))))))
   ([pname]
     (let [db (d/db *conn*)
           content (d/q '[:find [?line ...]

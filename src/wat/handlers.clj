@@ -115,7 +115,7 @@
        (let [user it]
          {:status 200
           :headers {"Content-Type" "text/html"}
-          :body (str "<center>Welcome to workspace,<b>" (:name user) "</b>.</center>")})
+          :body (str "<center>Welcome to dashboard,<b>" (:name user) "</b>.</center>")})
        {:status  403
         :headers {"Content-Type" "text/html"}
         :body    "<center>Only for admins, buddy.</center>"}))
@@ -123,10 +123,8 @@
 ;; ===============================================
 
 (defn logout-handler [req]
-  {:status 200
-   :headers {"Content-Type" "text/html"}
-   :body "<center>Farewell!</center>"
-   :session nil})
+  (assoc (redirect "login")
+         :session nil))
 
 (defn login-handler [username password]
   (aif (db/user-exist? username)
@@ -146,7 +144,7 @@
     {:status  403
      :headers {"Content-Type" "text/html"}
      :body    (str "<center>Username <b>" username "</b> is taken, try again.</center>")}
-    (if (= "mvks-fdnv-8r30-49ik" token) ;; TODO: make adequate tokens or smth
+    (if (util/check-token token)
       (do
         (db/add-user username (hash/encrypt password) 1)
         (login-handler username password))
