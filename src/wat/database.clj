@@ -9,6 +9,7 @@
 (use '[wat.util :refer :all])
 
 (declare define-attributes)
+(declare get-entity)
 
 (defonce connect-to-db-server
   (let [db-name "test-db"
@@ -193,12 +194,12 @@
   (when-not (:worklist user)
    (let [uname (:name user)
          db (d/db *conn*)
-         translator (:line/translator (d/touch (d/entity db (d/q '[:find ?e .
-                                                                   :in $ ?pname
-                                                                   :where [?e :line/pname ?pname]
-                                                                   (not [?e :line/translator ""])
-                                                                   [?e :line/reserved ""]]
-                                                                 db pname))))
+         translator (:line/translator (get-entity db (d/q '[:find ?e .
+                                                          :in $ ?pname
+                                                          :where [?e :line/pname ?pname]
+                                                          (not [?e :line/translator ""])
+                                                          [?e :line/reserved ""]]
+                                                        db pname)))
          [chunk actual-size] (get-n-words size
                                           (d/q '[:find [?e ...]
                                                  :in $ ?pname ?tname
@@ -216,6 +217,38 @@
                    :user/worklist chunk}])
      [(doall (map #(into {} (d/touch (d/entity db %))) chunk)) actual-size])))
 
+(defn get-chunk-to-redact-2 [pname size user]
+  (when-not (:worklist user)
+    (let [uname (:name user)
+          urole (:role user)
+          db (d/db *conn*)
+          redactor (:line/redactor
+                    (get-entity db (d/q '[:find ?e .
+                                         :in $ ?pname ?uname ?urole
+                                         :where [?e :line/pname ?pname]
+                                                [?e :line/redactor ?rname]
+                                          [(#(and (not= %1 %2)
+                                                  (not= ?rname "")
+                                                        (not= (:role (wat.database/user-exist? %1)) %3))
+                                                  ?rname ?uname ?urole)]
+                                                [?e :line/reserved ""]]
+                                       db pname uname urole)))
+          [chunk actual-size] (when redactor (get-n-words size
+                                             (d/q '[:find [?e ...]
+                                                    :in $ ?pname ?rname
+                                                    :where [?e :line/pname ?pname]
+                                                    [?e :line/redactor ?rname] 
+                                                    [?e :line/reserved ""]]
+                                                  db pname redactor)))]
+      (doseq [e chunk]
+       (d/transact *conn*
+                   [{:db/id e
+                     :line/reserved uname}]))
+     (d/transact *conn*
+                 [{:db/id (db-id-by-name uname)
+                   :user/worklist chunk}])
+     [(doall (map #(into {} (get-entity db %)) chunk)) actual-size])))
+
 (defn return-translated-chunk [proj data user]
   (let [uname (:name user)
         worklist (:worklist user)
@@ -225,7 +258,7 @@
                num-modified 0]
           (aif (:db/id (first old-lines))
                (let [original (apply dissoc
-                                     (into {} (d/touch (d/entity db it)))
+                                     (into {} (get-entity db it))
                                      (:project/inner-attrs proj))
                      id (:line/id original)
                      modified (first (filter #(= id (:line/id %)) data))]
@@ -259,7 +292,7 @@
                num-modified 0]
           (aif (:db/id (first old-lines))
                (let [original (apply dissoc
-                                     (into {} (d/touch (d/entity db it)))
+                                     (into {} (get-entity db it))
                                      (:project/inner-attrs proj))
                      id (:line/id original)
                      modified (first (filter #(= id (:line/id %)) data))] 
@@ -299,12 +332,12 @@
 
 (defn user-exist? [name]
   (aif (db-id-by-name name)
-       (let [user (d/touch (d/entity (d/db *conn*) it))]
+       (let [user (get-entity (d/db *conn*) it)]
          {:name (:user/name user) :uid (:user/uid user) :password (:user/password user) :role (:user/role user) :worklist (:user/worklist user)})))
 
 (defn get-user-list []
   (doall
-   (map #(d/touch (d/entity (d/db *conn*) %))
+   (map #(get-entity (d/db *conn*) %)
         (d/q '[:find [?user ...]
                :where [?user :user/name _]] (d/db *conn*)))))
 
@@ -321,3 +354,33 @@
          [(str ?ident) ?val]
          [(.startsWith ^String ?val ":line")]] (d/db *conn*)))
 
+(defn get-attribute-history [entity-id attr-id]
+  (vec (d/q '[:find ?tx-time ?v
+              :in $ ?e ?attr
+              :where [?e ?a ?v ?tx ?added]
+                     [(= ?a ?attr)]
+                     [?tx :db/txInstant ?tx-time]
+                     [(= true ?added)]] 
+            (d/history (d/db *conn*)) 
+            entity-id
+            attr-id)))
+
+(defn get-attribute-id [attr]
+  (d/q '[:find ?e .
+         :in $ ?a
+         :where [?e :db/ident ?ident]
+                [_ :db.install/attribute ?e]
+                [(= ?ident ?a)]]
+       (d/db *conn*) attr))
+
+(defn get-line-by-id [pname id]
+  (aif (d/q '[:find ?e .
+              :in $ ?pname ?id
+              :where [?e :line/id ?id]
+                     [?e :line/pname ?pname]]
+            (d/db *conn*) pname id)
+   (d/touch (d/entity (d/db *conn*) it))))
+
+(defn get-entity [db id]
+  (aif (d/entity db id)
+       (d/touch it)))

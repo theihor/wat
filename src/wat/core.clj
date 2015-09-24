@@ -27,6 +27,7 @@
   (POST "/get-text-to-redact" [] handlers/get-text-to-redact)
   (POST "/return-text" [] handlers/return-text)
   ;; Admin
+  (GET "/dashboard" [] handlers/dashboard-handler)
   (route/not-found "<center><br><h1>Nothing here, go and do something useful.</h1></center>"))
 
 (def app
@@ -37,5 +38,5 @@
       (wrap-defaults (assoc-in site-defaults [:security :anti-forgery] false))))
 
 (defonce server (jetty/run-jetty #'app {:port 3030 :join? false}))
-
  
+(defn -main []) 

@@ -13,6 +13,5 @@
                  [buddy/buddy-hashers "0.6.0"]
                  [bouncer "0.3.3"]
                  [com.datomic/datomic-free "0.9.5186" :exclusions [joda-time]]
-                 [cheshire "5.5.0"]])
-
-;
+                 [cheshire "5.5.0"]]
+  :main wat.core)
