@@ -4,6 +4,7 @@
 
 (use '[wat.database :as db])
 (use '[wat.util :as util :refer [aif]])
+(use '[wat.handlers-html :as html])
 
 (defn authenticated? [req role]
   (let [user (user-exist? (:user (:session req)))]
@@ -24,37 +25,7 @@
        (let [user it]
          {:status 200
           :headers {"Content-Type" "text/html"}
-          :body (str "<div class=\"translate\">
-                      <form method=\"post\" action=\"get-text-to-translate\">
-                       <h2>Get text to translate</h2>
-                       <p><input type=\"number\" name=\"chunk-size\" required=\"required\" value=\"2000\" ></p>
-                       <p><input type=\"text\" name=\"project-name\" required=\"required\" placeholder= \"Project name\" >
-                          <input type=\"submit\" name=\"get-chunk\" value=\"Get!\"></p>
-                      </form>
-                      ====================================
-                      <form method=\"post\" action=\"get-text-to-redact\">
-                       <h2>Get text to redact</h2>
-                       <p><input type=\"number\" name=\"chunk-size\" required=\"required\" value=\"2000\" ></p>
-                       <p><input type=\"text\" name=\"project-name\" required=\"required\" placeholder= \"Project name\" >
-                          <input type=\"submit\" name=\"submit\" value=\"Redact translated\">
-                          <input type=\"submit\" name=\"submit\" value=\"Redact redacted\"></p>
-                      </form>
-                      ====================================
-                      <form action=\"return-text\" method=\"post\" enctype=\"multipart/form-data\">
-                       <h2>Return text</h2>
-                       <p><input name=\"file\" type=\"file\" required=\"required\" /></p>
-                       <p><input type=\"text\" name=\"project-name\" required=\"required\" placeholder= \"Project name\" ></p>
-                       <p><input type=\"submit\" name=\"submit\" value=\"Submit as translated\" />
-                          <input type=\"submit\" name=\"submit\" value=\"Submit as redacted\" /></p>
-                     </form>
-                      ==================================== <br> <br>
-                     <form action=\"dashboard\" method=\"get\">
-                      <input type=\"submit\" name=\"submit\" value=\"Admin dashboard\"/>
-                     </form>
-                     <form action=\"logout\" method=\"get\">
-                      <input type=\"submit\" name=\"submit\" value=\"Logout\"/>
-                     </form>
-                     </div> ")})
+          :body (html/workspace-body)})
        (redirect "/login")))
 
 (defn get-text-to-translate [req]
@@ -130,10 +101,42 @@
        (let [user it]
          {:status 200
           :headers {"Content-Type" "text/html"}
-          :body (str "<center>Welcome to dashboard,<b>" (:name user) "</b>.</center>")})
+          :body (html/dashboard-body)})
        {:status  403
         :headers {"Content-Type" "text/html"}
         :body    "<center>Only for admins, buddy.</center>"}))
+
+(defn get-line-by-identifier [req]
+  (aif (authenticated? req ADMIN)
+       (let [params (:params req)
+             user it
+             pname (:project-name params)
+             proj (db/get-project pname)
+             id (:line-id params)
+             line (into {} (db/get-line-by-id pname id))
+             dir (str (System/getProperty "user.dir")  "/resources/public/")
+             fname (str pname "-line-" id ".csv")
+             path (str dir fname)]
+         (util/dump-lines path [line] (into (:project/input-attrs proj)
+                                            (:project/work-attrs proj)))
+         (redirect fname))))
+
+(defn search-by-string [req]
+  (aif (authenticated? req ADMIN)
+       (let [params (:params req)
+             user it
+             pname (:project-name params)
+             string (:string-to-search params)
+             attr (keyword (:line-attribute params))
+             proj (db/get-project pname)
+             chunk (db/search-in-project pname string attr)
+             dir (str (System/getProperty "user.dir")  "/resources/public/")
+             fname (str pname "-search.csv")
+             path (str dir fname)]
+         (util/dump-lines path chunk (into (:project/input-attrs proj)
+                                           (:project/work-attrs proj)))
+         (redirect fname)
+         )))
 
 ;; ===============================================
 

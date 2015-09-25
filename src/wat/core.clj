@@ -28,6 +28,8 @@
   (POST "/return-text" [] handlers/return-text)
   ;; Admin
   (GET "/dashboard" [] handlers/dashboard-handler)
+  (POST "/get-line-by-id" [] handlers/get-line-by-identifier)
+  (POST "/search-string" [] handlers/search-by-string)
   (route/not-found "<center><br><h1>Nothing here, go and do something useful.</h1></center>"))
 
 (def app

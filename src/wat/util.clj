@@ -27,6 +27,7 @@
   (json/parse-string json true))
 
 (defn dump-lines [fname line-list attrs]
+  (println fname line-list attrs)
   (with-open [out-file (io/writer fname)]
     (csv/write-csv out-file
                    (cons attrs

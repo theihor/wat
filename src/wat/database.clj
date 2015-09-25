@@ -26,21 +26,23 @@
      (println "Connection established!"))))
 
 (defn add-attribute
-  ([name type cardinality doc]
+  ([name type cardinality doc fulltext]
    (future
      (d/transact *conn*
                  [{:db/id (d/tempid :db.part/db)
                    :db/ident name
                    :db/valueType type
+                   :db/fulltext fulltext
                    :db/cardinality cardinality
                    :db/doc doc
                    :db.install/_attribute :db.part/db}])))
-  ([[name type cardinality doc]]
+  ([[name type cardinality doc fulltext]]
    (future
      (d/transact *conn*
                  [{:db/id (d/tempid :db.part/db)
                    :db/ident name
                    :db/valueType type
+                   :db/fulltext fulltext
                    :db/cardinality cardinality
                    :db/doc doc
                    :db.install/_attribute :db.part/db}]))))
@@ -50,26 +52,26 @@
   []
   (doall
    (map add-attribute ;; Project attributes
-        [[:project/name :db.type/string :db.cardinality/one "Project name"]
-         [:project/input-attrs :db.type/string :db.cardinality/one "Line attributes used to load project."]
-         [:project/work-attrs :db.type/string :db.cardinality/one "Line attributes used in work."]]))
+        [[:project/name :db.type/string :db.cardinality/one "Project name" false]
+         [:project/input-attrs :db.type/string :db.cardinality/one "Line attributes used to load project." false]
+         [:project/work-attrs :db.type/string :db.cardinality/one "Line attributes used in work." false]]))
   (doall
    (map add-attribute ;; User attributes
-        [[:user/name :db.type/string :db.cardinality/one "Username"]
-         [:user/password :db.type/string :db.cardinality/one "Encrypted user password."]
-         [:user/role :db.type/long :db.cardinality/one "Defines user rights (admin=0, user=1 etc.)"]
-         [:user/uid :db.type/long :db.cardinality/one "UID"]
-         [:user/rating :db.type/long :db.cardinality/one "User work rating."]
-         [:user/worklist :db.type/ref :db.cardinality/many "List of lines user working on."]]))
+        [[:user/name :db.type/string :db.cardinality/one "Username" false]
+         [:user/password :db.type/string :db.cardinality/one "Encrypted user password." false]
+         [:user/role :db.type/long :db.cardinality/one "Defines user rights (admin=0, user=1 etc.)" false]
+         [:user/uid :db.type/long :db.cardinality/one "UID" false]
+         [:user/rating :db.type/long :db.cardinality/one "User work rating." false]
+         [:user/worklist :db.type/ref :db.cardinality/many "List of lines user working on." false]]))
   (doall
    (map add-attribute ;; Basic line attributes
-        [[:line/pname :db.type/string :db.cardinality/one "Project name text line belongs to."]
-         [:line/id :db.type/string :db.cardinality/one "Text line id."]
-         [:line/text :db.type/string :db.cardinality/one "Original text line."]
-         [:line/translator :db.type/string :db.cardinality/one "Text line translator."]
-         [:line/redactor :db.type/string :db.cardinality/one "Text line redactor."]
-         [:line/reserved :db.type/string :db.cardinality/one "Person that is currently working on this line."]
-         [:line/num :db.type/long :db.cardinality/one "Line number for proper ordering."]]))
+        [[:line/pname :db.type/string :db.cardinality/one "Project name text line belongs to." false]
+         [:line/id :db.type/string :db.cardinality/one "Text line id." false]
+         [:line/text :db.type/string :db.cardinality/one "Original text line." true]
+         [:line/translator :db.type/string :db.cardinality/one "Text line translator." false]
+         [:line/redactor :db.type/string :db.cardinality/one "Text line redactor." false]
+         [:line/reserved :db.type/string :db.cardinality/one "Person that is currently working on this line." false]
+         [:line/num :db.type/long :db.cardinality/one "Line number for proper ordering." false]]))
   nil)
 
 (defn- db-id-by-name [name]
@@ -384,3 +386,15 @@
 (defn get-entity [db id]
   (aif (d/entity db id)
        (d/touch it)))
+
+(defn search-string [string attr]
+  (d/q '[:find ?entity ?score
+         :in $ ?search ?attr
+         :where [(fulltext $ ?attr ?search) [[?entity ?name ?tx ?score]]]]
+       (d/db *conn*) string attr))
+
+(defn search-in-project [pname string attr]
+  (let [db (d/db *conn*)
+        matching (map #(into {} (get-entity db (first %))) (search-string string attr))
+        in-project (vec (filter #(= (:line/pname %) pname) matching))]
+    in-project))
