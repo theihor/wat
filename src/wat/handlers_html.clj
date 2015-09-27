@@ -2,7 +2,13 @@
 
 (defn workspace-body []
   (str
-"<div class=\"translate\">
+
+"
+<head>
+ <title>WAT|Workspace</title>
+</head>
+<body>
+<div class=\"translate\">
  <form method=\"post\" action=\"get-text-to-translate\">
   <h2>Get text to translate</h2>
   <p><input type=\"number\" name=\"chunk-size\" required=\"required\" value=\"2000\" ></p>
@@ -32,11 +38,17 @@
  <form action=\"logout\" method=\"get\">
   <input type=\"submit\" name=\"submit\" value=\"Logout\"/>
  </form>
-</div> "))
+</div>
+</body>"))
 
 (defn dashboard-body []
   (str
-"<div class=\"translate\">
+"
+<head>
+ <title>WAT|Dashboard</title>
+</head>
+<body>
+<div class=\"translate\">
  <form method=\"post\" action=\"get-line-by-id\">
   <h2>Get line by id</h2>
   <p><input type=\"text\" name=\"line-id\" required=\"required\" placeholder=\"id\" ></p>
@@ -58,4 +70,5 @@
  <form action=\"logout\" method=\"get\">
   <input type=\"submit\" name=\"submit\" value=\"Logout\"/>
  </form>
-</div> "))
+</div>
+</body>"))

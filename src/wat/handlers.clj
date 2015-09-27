@@ -24,7 +24,7 @@
   (aif (authenticated? req TRANSLATOR)
        (let [user it]
          {:status 200
-          :headers {"Content-Type" "text/html"}
+          :headers {"Content-Type" "text/html" "Title" "WAT"}
           :body (html/workspace-body)})
        (redirect "/login")))
 
@@ -73,7 +73,7 @@
        (redirect "/login")))
 
 (defn return-text [req]
-  (aif (authenticated? req REDACTOR)
+  (aif (authenticated? req TRANSLATOR)
        (let [params (:params req)
              user it
              file (:tempfile (:file params))
