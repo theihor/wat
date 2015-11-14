@@ -47,7 +47,7 @@
                  (conj coll (zipmap attrs it)))
           coll))))
 
-(let [used (atom [])] ;; Resets each time you restart system or reload file
+(let [used (atom [])] ;; Resets each time you restart system or reload this file
   (defn check-token [token]
     (aif (and (= 24 (count token))
                (not (some #{token} @used))
